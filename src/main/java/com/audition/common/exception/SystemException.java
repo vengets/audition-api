@@ -14,6 +14,7 @@ public class SystemException extends RuntimeException {
 
     public SystemException() {
         super();
+        this.title = DEFAULT_TITLE;
     }
 
     public SystemException(final String message) {

@@ -10,3 +10,6 @@ application:
     write-timeout: 5000
     connect-timeout: 5000
     response-timeout: 5000
+app:
+  date-format: yyyy-MM-dd
+  locale: en_US

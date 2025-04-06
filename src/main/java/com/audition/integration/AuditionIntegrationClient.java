@@ -1,45 +1,102 @@
 package com.audition.integration;
 
 import com.audition.common.exception.SystemException;
+import com.audition.configuration.AuditionIntegrationApiProperties;
+import com.audition.model.AuditionComment;
 import com.audition.model.AuditionPost;
-import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 @Component
 public class AuditionIntegrationClient {
 
+    private static final Logger LOG = LoggerFactory.getLogger(AuditionIntegrationClient.class);
+    @Autowired
+    private transient RestTemplate restTemplate;
 
     @Autowired
-    private RestTemplate restTemplate;
+    private transient AuditionIntegrationApiProperties apiProperties;
 
-    public List<AuditionPost> getPosts() {
-        // TODO make RestTemplate call to get Posts from https://jsonplaceholder.typicode.com/posts
-
-        return new ArrayList<>();
+    public AuditionIntegrationClient(final RestTemplate restTemplate,
+        final AuditionIntegrationApiProperties apiProperties) {
+        this.restTemplate = restTemplate;
+        this.apiProperties = apiProperties;
     }
 
-    public AuditionPost getPostById(final String id) {
-        // TODO get post by post ID call from https://jsonplaceholder.typicode.com/posts/
+    public List<AuditionPost> getPosts() {
         try {
-            return new AuditionPost();
-        } catch (final HttpClientErrorException e) {
-            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                throw new SystemException("Cannot find a Post with id " + id, "Resource Not Found",
-                    404);
-            } else {
-                // TODO Find a better way to handle the exception so that the original error message is not lost. Feel free to change this function.
-                throw new SystemException("Unknown Error message");
+            final ResponseEntity<AuditionPost[]> response = restTemplate.getForEntity(
+                apiProperties.getGetPostsUrl(),
+                AuditionPost[].class
+            );
+
+            return Arrays.asList(Objects.requireNonNull(response.getBody()));
+
+        } catch (HttpClientErrorException | HttpServerErrorException ex) {
+            if (LOG.isErrorEnabled()) {
+                LOG.error("Error while fetching posts: {} - {}", ex.getStatusCode(), ex.getResponseBodyAsString());
             }
+            return Collections.emptyList();
+
+        } catch (RestClientException ex) {
+            if (LOG.isErrorEnabled()) {
+                LOG.error("Client error during API call: {}", ex.getMessage(), ex);
+            }
+            return Collections.emptyList();
         }
     }
 
-    // TODO Write a method GET comments for a post from https://jsonplaceholder.typicode.com/posts/{postId}/comments - the comments must be returned as part of the post.
 
-    // TODO write a method. GET comments for a particular Post from https://jsonplaceholder.typicode.com/comments?postId={postId}.
-    // The comments are a separate list that needs to be returned to the API consumers. Hint: this is not part of the AuditionPost pojo.
+    public AuditionPost getPostById(final String id) {
+        final String url = apiProperties.getSinglePostUrl(id);
+        return getForObject(url, AuditionPost.class, "getPostById(" + id + ")");
+    }
+
+    public AuditionPost getPostWithComments(final String postId) {
+        final AuditionPost post = getPostById(postId);
+        final String commentsUrl = apiProperties.getPostCommentsUrl(postId);
+
+        final AuditionComment[] comments = getForObject(commentsUrl, AuditionComment[].class,
+            "getPostWithComments(" + postId + ")");
+        post.setAuditionComments(Arrays.asList(comments));
+
+        return post;
+    }
+
+    public List<AuditionComment> getCommentsByPostId(final String postId) {
+        final String url = apiProperties.getCommentsByPostUrl(postId);
+        final AuditionComment[] comments = getForObject(url, AuditionComment[].class,
+            "getCommentsByPostId(" + postId + ")");
+        return Arrays.asList(comments);
+    }
+
+    private <T> T getForObject(final String url, final Class<T> responseType, final String errorContext) {
+        try {
+            return Objects.requireNonNull(restTemplate.getForObject(url, responseType));
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new SystemException("Resource not found during: " + errorContext + e.getMessage(),
+                    "Not Found " + e.getStatusCode().value(),
+                    404, e);
+            } else {
+                throw new SystemException(
+                    "Error during: " + errorContext + " - " + e.getMessage(),
+                    e.getStatusCode().value(),
+                    e
+                );
+            }
+        }
+    }
 }

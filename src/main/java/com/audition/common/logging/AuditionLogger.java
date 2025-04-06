@@ -1,12 +1,20 @@
 package com.audition.common.logging;
 
-import org.apache.commons.lang3.StringUtils;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import lombok.SneakyThrows;
 import org.slf4j.Logger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ProblemDetail;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AuditionLogger {
+
+    @Autowired
+    private transient ObjectMapper objectMapper;
 
     public void info(final Logger logger, final String message) {
         if (logger.isInfoEnabled()) {
@@ -57,13 +65,17 @@ public class AuditionLogger {
         }
     }
 
+    @SneakyThrows
     private String createStandardProblemDetailMessage(final ProblemDetail standardProblemDetail) {
-        // TODO Add implementation here.
-        return StringUtils.EMPTY;
+        return objectMapper.writeValueAsString(standardProblemDetail);
     }
 
+    @SneakyThrows
     private String createBasicErrorResponseMessage(final Integer errorCode, final String message) {
-        // TODO Add implementation here.
-        return StringUtils.EMPTY;
+        final Map<String, Object> payload = new ConcurrentHashMap<>();
+        payload.put("errorCode", errorCode);
+        payload.put("message", message);
+        payload.put("timestamp", Instant.now());
+        return objectMapper.writeValueAsString(payload);
     }
 }
